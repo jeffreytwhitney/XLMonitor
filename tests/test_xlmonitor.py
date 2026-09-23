@@ -102,6 +102,20 @@ class TestCleanRow:
         assert row == ("a", "b (c,d)")  # original untouched
 
 
+class TestFormatCsvFilename:
+    def test_brackets_dot_machine_name_and_trims_trailing_space(self):
+        base_name = "M961373A001_RevE-Op10-DOT 6.2 - 09_22_2026 11_24_00 PM"
+
+        result = XLMonitor.format_csv_filename(base_name)
+
+        assert result == "M961373A001_RevE-Op10-[DOT 6.2] - 09_22_2026 11_24_00 PM"
+
+    def test_leaves_names_without_a_dot_machine_name_unchanged(self):
+        base_name = "M961373A001_RevE-Op10-Other Machine - 09_22_2026"
+
+        assert XLMonitor.format_csv_filename(base_name) == base_name
+
+
 class TestConvertExcelToCsv:
     def test_converts_xlsx_to_csv(self, dirs):
         xlsx_path = os.path.join(dirs["watch"], "sample.xlsx")
@@ -114,6 +128,15 @@ class TestConvertExcelToCsv:
         with open(csv_path, newline="", encoding="utf-8") as f:
             rows = list(csv.reader(f))
         assert rows == [["a", "b", "c"], ["1", "2", "3"]]
+
+    def test_brackets_dot_machine_name_in_csv_filename(self, dirs):
+        xlsx_name = "M961373A001_RevE-Op10-DOT 6.2 - 09_22_2026 11_24_00 PM.xlsx"
+        make_workbook(os.path.join(dirs["watch"], xlsx_name), [["a"]])
+
+        XLMonitor.convert_excel_to_csv()
+
+        expected_name = "M961373A001_RevE-Op10-[DOT 6.2] - 09_22_2026 11_24_00 PM.csv"
+        assert os.path.exists(os.path.join(dirs["output_csv"], expected_name))
 
     def test_copies_source_file_to_1f_output(self, dirs):
         xlsx_path = os.path.join(dirs["watch"], "sample.xlsx")
@@ -274,7 +297,7 @@ class TestIntegration:
 
         XLMonitor.convert_excel_to_csv()
 
-        base_name = os.path.splitext(source_name)[0]
+        base_name = XLMonitor.format_csv_filename(os.path.splitext(source_name)[0])
         csv_path = os.path.join(OUT_CSV_DIR, f"{base_name}.csv")
         copy_1f_path = os.path.join(OUT_1F_DIR, source_name)
         archived_path = os.path.join(ARCHIVE_DIR, source_name)

@@ -41,6 +41,15 @@ def clean_row(row):
     return row
 
 
+def format_csv_filename(base_name):
+    """Bracket the dash-delimited DOT machine name in a CSV base filename."""
+    return re.sub(
+        r"-(DOT\b[^-]*?\d)\s*-",
+        r"-[\1] -",
+        base_name,
+    )
+
+
 def trim_archive():
     if not ARCHIVE_DIR:
         return
@@ -71,7 +80,8 @@ def convert_excel_to_csv():
             try:
                 logger.info(f"Found file: {filename}. Processing...")
                 base_name = os.path.splitext(filename)[0]
-                csv_path = os.path.join(OUTPUT_CSV_DIR, f"{base_name}.csv")
+                csv_base_name = format_csv_filename(base_name)
+                csv_path = os.path.join(OUTPUT_CSV_DIR, f"{csv_base_name}.csv")
                 wb = load_workbook(excel_path, data_only=True)
                 ws = wb.active
 
