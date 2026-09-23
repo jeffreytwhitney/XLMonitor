@@ -10,11 +10,15 @@ import XLMonitor
 
 
 FILES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "files")
-ARCHIVE_DIR = os.path.join(FILES_DIR, "archive")
-IN_DIR = os.path.join(FILES_DIR, "in")
-OUT_1F_DIR = os.path.join(FILES_DIR, "out_1f")
-OUT_CSV_DIR = os.path.join(FILES_DIR, "out_csv")
 RESET_DIR = os.path.join(FILES_DIR, "reset")
+
+# The integration test exercises the real pipeline directories, sourced from
+# .envtest (loaded in conftest.py) so it matches whatever settings are used
+# for manual/integration testing rather than hardcoded paths.
+ARCHIVE_DIR = os.getenv("ARCHIVE_DIR")
+IN_DIR = os.getenv("WATCH_DIR")
+OUT_1F_DIR = os.getenv("OUTPUT_1F_DIR")
+OUT_CSV_DIR = os.getenv("OUTPUT_CSV_DIR")
 
 
 def make_workbook(path, rows):
@@ -213,12 +217,14 @@ class TestConvertExcelToCsv:
         assert os.listdir(dirs["output_csv"]) == []
         assert os.listdir(dirs["archive"]) == []
 
-    def test_creates_missing_directories(self, tmp_path, monkeypatch):
-        watch_dir = tmp_path / "watch"
-        output_1f_dir = tmp_path / "does_not_exist_output_1f"
-        output_csv_dir = tmp_path / "does_not_exist_output_csv"
+    def test_creates_missing_local_directories(self, tmp_path, monkeypatch):
+        """WATCH_DIR and ARCHIVE_DIR are local; they should be auto-created."""
+        watch_dir = tmp_path / "does_not_exist_watch"
+        output_1f_dir = tmp_path / "output_1f"
+        output_csv_dir = tmp_path / "output_csv"
         archive_dir = tmp_path / "does_not_exist_archive"
-        watch_dir.mkdir()
+        output_1f_dir.mkdir()
+        output_csv_dir.mkdir()
 
         monkeypatch.setattr(XLMonitor, "WATCH_DIR", str(watch_dir))
         monkeypatch.setattr(XLMonitor, "OUTPUT_1F_DIR", str(output_1f_dir))
@@ -227,9 +233,52 @@ class TestConvertExcelToCsv:
 
         XLMonitor.convert_excel_to_csv()
 
-        assert os.path.isdir(output_1f_dir)
-        assert os.path.isdir(output_csv_dir)
+        assert os.path.isdir(watch_dir)
         assert os.path.isdir(archive_dir)
+
+    def test_errors_out_when_output_1f_dir_missing(self, tmp_path, monkeypatch):
+        """OUTPUT_1F_DIR/OUTPUT_CSV_DIR are network shares; never auto-create them."""
+        watch_dir = tmp_path / "watch"
+        output_csv_dir = tmp_path / "output_csv"
+        archive_dir = tmp_path / "archive"
+        watch_dir.mkdir()
+        output_csv_dir.mkdir()
+        archive_dir.mkdir()
+        missing_output_1f_dir = tmp_path / "does_not_exist_output_1f"
+
+        make_workbook(os.path.join(str(watch_dir), "sample.xlsx"), [["x"]])
+
+        monkeypatch.setattr(XLMonitor, "WATCH_DIR", str(watch_dir))
+        monkeypatch.setattr(XLMonitor, "OUTPUT_1F_DIR", str(missing_output_1f_dir))
+        monkeypatch.setattr(XLMonitor, "OUTPUT_CSV_DIR", str(output_csv_dir))
+        monkeypatch.setattr(XLMonitor, "ARCHIVE_DIR", str(archive_dir))
+
+        XLMonitor.convert_excel_to_csv()
+
+        assert not os.path.isdir(missing_output_1f_dir)
+        # File left untouched since processing was skipped entirely.
+        assert os.path.exists(os.path.join(str(watch_dir), "sample.xlsx"))
+
+    def test_errors_out_when_output_csv_dir_missing(self, tmp_path, monkeypatch):
+        watch_dir = tmp_path / "watch"
+        output_1f_dir = tmp_path / "output_1f"
+        archive_dir = tmp_path / "archive"
+        watch_dir.mkdir()
+        output_1f_dir.mkdir()
+        archive_dir.mkdir()
+        missing_output_csv_dir = tmp_path / "does_not_exist_output_csv"
+
+        make_workbook(os.path.join(str(watch_dir), "sample.xlsx"), [["x"]])
+
+        monkeypatch.setattr(XLMonitor, "WATCH_DIR", str(watch_dir))
+        monkeypatch.setattr(XLMonitor, "OUTPUT_1F_DIR", str(output_1f_dir))
+        monkeypatch.setattr(XLMonitor, "OUTPUT_CSV_DIR", str(missing_output_csv_dir))
+        monkeypatch.setattr(XLMonitor, "ARCHIVE_DIR", str(archive_dir))
+
+        XLMonitor.convert_excel_to_csv()
+
+        assert not os.path.isdir(missing_output_csv_dir)
+        assert os.path.exists(os.path.join(str(watch_dir), "sample.xlsx"))
 
     def test_handles_corrupt_workbook_without_raising(self, dirs):
         bad_path = os.path.join(dirs["watch"], "corrupt.xlsx")

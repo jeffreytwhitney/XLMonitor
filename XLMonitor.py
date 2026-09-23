@@ -69,9 +69,23 @@ def trim_archive():
 
 
 def convert_excel_to_csv():
-    for folder in [WATCH_DIR, OUTPUT_1F_DIR, OUTPUT_CSV_DIR, ARCHIVE_DIR]:
+    # WATCH_DIR and ARCHIVE_DIR are local folders, so it's safe to create
+    # them automatically if they're missing.
+    for folder in [WATCH_DIR, ARCHIVE_DIR]:
         if folder and not os.path.exists(folder):
-            os.makedirs(folder)
+            try:
+                os.makedirs(folder)
+            except Exception as e:
+                logger.error(f"Error creating folder {folder}: {e}")
+
+    # OUTPUT_1F_DIR and OUTPUT_CSV_DIR are network locations. Don't try to
+    # create them - if they're unavailable (e.g. share is down/disconnected),
+    # log an error and skip this cycle instead of silently creating local
+    # folders in the wrong place.
+    for folder in [OUTPUT_1F_DIR, OUTPUT_CSV_DIR]:
+        if not folder or not os.path.isdir(folder):
+            logger.error(f"Output directory not available: {folder!r}")
+            return
 
     for filename in os.listdir(WATCH_DIR):
         if filename.lower().endswith(('.xlsx', '.xls')) and not filename.startswith('~$'):
