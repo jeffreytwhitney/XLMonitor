@@ -4,5 +4,5 @@ set "EXEFullPath=C:\XLMonitor\XLMonitor.exe"
 
 tasklist | find /i "%EXEName%" >nul
 if errorlevel 1 (
-    start "" /b "%EXEFullPath%" >output.txt 2>error.txt
+    powershell -NoProfile -Command "Start-Process -FilePath '%EXEFullPath%' -WindowStyle Hidden -RedirectStandardOutput 'output.txt' -RedirectStandardError 'error.txt'"
 )
