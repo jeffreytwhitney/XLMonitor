@@ -115,6 +115,13 @@ class TestFormatCsvFilename:
 
         assert XLMonitor.format_csv_filename(base_name) == base_name
 
+    def test_brackets_dot_machine_name_without_a_decimal(self):
+        base_name = "M961373A001_RevE-Op10-DOT 6 - 09_22_2026 11_24_00 PM"
+
+        result = XLMonitor.format_csv_filename(base_name)
+
+        assert result == "M961373A001_RevE-Op10-[DOT 6] - 09_22_2026 11_24_00 PM"
+
 
 class TestConvertExcelToCsv:
     def test_converts_xlsx_to_csv(self, dirs):
@@ -136,6 +143,15 @@ class TestConvertExcelToCsv:
         XLMonitor.convert_excel_to_csv()
 
         expected_name = "M961373A001_RevE-Op10-[DOT 6.2] - 09_22_2026 11_24_00 PM.csv"
+        assert os.path.exists(os.path.join(dirs["output_csv"], expected_name))
+
+    def test_brackets_dot_machine_name_without_decimal_in_csv_filename(self, dirs):
+        xlsx_name = "M961373A001_RevE-Op10-DOT 6 - 09_22_2026 11_24_00 PM.XLSX"
+        make_workbook(os.path.join(dirs["watch"], xlsx_name), [["a"]])
+
+        XLMonitor.convert_excel_to_csv()
+
+        expected_name = "M961373A001_RevE-Op10-[DOT 6] - 09_22_2026 11_24_00 PM.csv"
         assert os.path.exists(os.path.join(dirs["output_csv"], expected_name))
 
     def test_copies_source_file_to_1f_output(self, dirs):
