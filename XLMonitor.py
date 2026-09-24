@@ -132,6 +132,12 @@ def convert_excel_to_csv():
 if __name__ == "__main__":
     last_trim_time = 0
     while True:
+        KILL_ME_NOW = os.getenv('KILL_ME_NOW', '0') == '1'
+
+        if KILL_ME_NOW:
+            logger.info("KILL_ME_NOW is set. Exiting.")
+            break
+
         convert_excel_to_csv()
 
         if time.time() - last_trim_time >= TRIM_INTERVAL:
