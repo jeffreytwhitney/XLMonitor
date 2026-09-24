@@ -129,6 +129,13 @@ class TestFormatCsvFilename:
 
         assert result == "M961373A001_RevE-Op10-[DOT 6] - 09_22_2026 11_24_00 PM"
 
+    def test_brackets_dot_machine_name_with_no_space_or_underscore(self):
+        base_name = "M961373A001_RevE-Op10-DOT1 - 09_22_2026 11_24_00 PM"
+
+        result = XLMonitor.format_csv_filename(base_name)
+
+        assert result == "M961373A001_RevE-Op10-[DOT1] - 09_22_2026 11_24_00 PM"
+
 
 class TestConvertExcelToCsv:
     def test_converts_xlsx_to_csv(self, dirs):
@@ -401,3 +408,61 @@ class TestIntegration:
             actual_rows = list(csv.reader(f))
 
         assert len(actual_rows) == len(expected_rows)
+
+
+class TestShouldExit:
+    def test_defaults_to_false_when_unset(self, monkeypatch):
+        monkeypatch.delenv("KILL_ME_NOW", raising=False)
+        assert XLMonitor.should_exit() is False
+
+    @pytest.mark.parametrize("value", ["1", "true", "True", "TRUE", "yes", "Yes"])
+    def test_truthy_values_return_true(self, monkeypatch, value):
+        monkeypatch.setenv("KILL_ME_NOW", value)
+        assert XLMonitor.should_exit() is True
+
+    @pytest.mark.parametrize("value", ["0", "false", "False", "no", "", "  "])
+    def test_falsy_values_return_false(self, monkeypatch, value):
+        monkeypatch.setenv("KILL_ME_NOW", value)
+        assert XLMonitor.should_exit() is False
+
+
+class TestRunMonitorLoop:
+    def test_exits_immediately_without_processing_when_should_exit_is_true(self, monkeypatch):
+        monkeypatch.setattr(XLMonitor, "should_exit", lambda: True)
+        convert_calls = []
+        monkeypatch.setattr(
+            XLMonitor, "convert_excel_to_csv", lambda: convert_calls.append(1)
+        )
+
+        XLMonitor.run_monitor_loop()
+
+        assert convert_calls == []
+
+    def test_processes_files_until_should_exit_is_true(self, monkeypatch):
+        exit_flags = [False, False, True]
+        monkeypatch.setattr(XLMonitor, "should_exit", lambda: exit_flags.pop(0))
+        convert_calls = []
+        monkeypatch.setattr(
+            XLMonitor, "convert_excel_to_csv", lambda: convert_calls.append(1)
+        )
+        monkeypatch.setattr(XLMonitor, "trim_archive", lambda: None)
+        monkeypatch.setattr(XLMonitor.time, "sleep", lambda seconds: None)
+
+        XLMonitor.run_monitor_loop()
+
+        assert len(convert_calls) == 2
+
+    def test_trims_archive_when_trim_interval_has_elapsed(self, monkeypatch):
+        exit_flags = [False, True]
+        monkeypatch.setattr(XLMonitor, "should_exit", lambda: exit_flags.pop(0))
+        monkeypatch.setattr(XLMonitor, "convert_excel_to_csv", lambda: None)
+        monkeypatch.setattr(XLMonitor, "TRIM_INTERVAL", 0)
+        trim_calls = []
+        monkeypatch.setattr(
+            XLMonitor, "trim_archive", lambda: trim_calls.append(1)
+        )
+        monkeypatch.setattr(XLMonitor.time, "sleep", lambda seconds: None)
+
+        XLMonitor.run_monitor_loop()
+
+        assert trim_calls == [1]

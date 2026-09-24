@@ -5,17 +5,18 @@ import shutil
 import csv
 from openpyxl import load_workbook
 
-from logger import BASE_DIR, logger
+from env_config import config
+from logger import logger
 
-WATCH_DIR = os.getenv('WATCH_DIR', '')
-OUTPUT_1F_DIR = os.getenv('OUTPUT_1F_DIR', '')
-OUTPUT_CSV_DIR = os.getenv('OUTPUT_CSV_DIR', '')
-ARCHIVE_DIR = os.getenv('ARCHIVE_DIR', '')
-POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', 5))
-MAX_ARCHIVE_FILE_AGE = int(os.getenv('MAX_ARCHIVE_FILE_AGE', 30))
-TRIM_INTERVAL = int(os.getenv('TRIM_INTERVAL', 86400))
-TEST_MODE = bool(os.getenv('TEST_MODE', False))
-WORKING_DIR = os.path.join(BASE_DIR, 'working')
+WATCH_DIR = config.WATCH_DIR
+OUTPUT_1F_DIR = config.OUTPUT_1F_DIR
+OUTPUT_CSV_DIR = config.OUTPUT_CSV_DIR
+ARCHIVE_DIR = config.ARCHIVE_DIR
+POLL_INTERVAL = config.POLL_INTERVAL
+MAX_ARCHIVE_FILE_AGE = config.MAX_ARCHIVE_FILE_AGE
+TRIM_INTERVAL = config.TRIM_INTERVAL
+TEST_MODE = config.TEST_MODE
+WORKING_DIR = os.path.join(config.BASE_DIR, 'working')
 
 
 def replace_commas_in_parentheses(text):
@@ -46,7 +47,7 @@ def clean_row(row):
 def format_csv_filename(base_name):
     """Bracket the dash-delimited DOT machine name in a CSV base filename."""
     return re.sub(
-        r"-(DOT\b[^-]*?\d)\s*-",
+        r"-(DOT[^-]*?\d)\s*-",
         r"-[\1] -",
         base_name,
     )
@@ -129,12 +130,15 @@ def convert_excel_to_csv():
                 logger.error(f"Error processing {filename}: {e}")
 
 
-if __name__ == "__main__":
+def should_exit():
+    """Return True if the KILL_ME_NOW env var requests a graceful shutdown."""
+    return config.kill_me_now
+
+
+def run_monitor_loop():
     last_trim_time = 0
     while True:
-        KILL_ME_NOW = os.getenv('KILL_ME_NOW', '0') == '1'
-
-        if KILL_ME_NOW:
+        if should_exit():
             logger.info("KILL_ME_NOW is set. Exiting.")
             break
 
@@ -145,3 +149,7 @@ if __name__ == "__main__":
             last_trim_time = time.time()
 
         time.sleep(POLL_INTERVAL)
+
+
+if __name__ == "__main__":
+    run_monitor_loop()

@@ -1,26 +1,13 @@
 import logging
 import os
-import sys
 
-from dotenv import load_dotenv
+from env_config import config
 
-
-def _get_base_dir():
-    if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.abspath(sys.argv[0]))
-
-
-BASE_DIR = _get_base_dir()
-
-load_dotenv(os.path.join(BASE_DIR, '.env'))
-
-LOGGER_LEVEL = os.getenv('LOGGER_LEVEL', 'INFO').upper()
-LOGGER_FILE = os.getenv('LOGGER_FILE', 'app.log')
-LOG_PATH = os.path.join(BASE_DIR, LOGGER_FILE)
+BASE_DIR = config.BASE_DIR
+LOG_PATH = os.path.join(BASE_DIR, config.LOGGER_FILE)
 
 logger = logging.getLogger('XLMonitor')
-logger.setLevel(getattr(logging, LOGGER_LEVEL, logging.INFO))
+logger.setLevel(getattr(logging, config.LOGGER_LEVEL, logging.INFO))
 
 if not logger.handlers:
     handler = logging.FileHandler(LOG_PATH, encoding='utf-8')
