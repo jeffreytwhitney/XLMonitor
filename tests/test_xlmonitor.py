@@ -36,6 +36,7 @@ def dirs(tmp_path, monkeypatch):
     output_1f_dir = tmp_path / "output_1f"
     output_csv_dir = tmp_path / "output_csv"
     archive_dir = tmp_path / "archive"
+    working_dir = tmp_path / "working"
     watch_dir.mkdir()
     output_1f_dir.mkdir()
     output_csv_dir.mkdir()
@@ -45,12 +46,14 @@ def dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(XLMonitor, "OUTPUT_1F_DIR", str(output_1f_dir))
     monkeypatch.setattr(XLMonitor, "OUTPUT_CSV_DIR", str(output_csv_dir))
     monkeypatch.setattr(XLMonitor, "ARCHIVE_DIR", str(archive_dir))
+    monkeypatch.setattr(XLMonitor, "WORKING_DIR", str(working_dir))
 
     return {
         "watch": str(watch_dir),
         "output_1f": str(output_1f_dir),
         "output_csv": str(output_csv_dir),
         "archive": str(archive_dir),
+        "working": str(working_dir),
     }
 
 
@@ -191,6 +194,20 @@ class TestConvertExcelToCsv:
 
         assert not os.path.exists(xlsx_path)
         assert os.path.exists(os.path.join(dirs["archive"], "sample.xlsx"))
+
+    def test_writes_csv_locally_before_publishing(self, dirs):
+        stale_file = os.path.join(dirs["working"], "stale.csv")
+        os.makedirs(dirs["working"])
+        with open(stale_file, "w", encoding="utf-8") as f:
+            f.write("stale")
+        xlsx_path = os.path.join(dirs["watch"], "sample.xlsx")
+        make_workbook(xlsx_path, [["a", "b"], [1, 2]])
+
+        XLMonitor.convert_excel_to_csv()
+
+        csv_path = os.path.join(dirs["output_csv"], "sample.csv")
+        assert os.path.exists(csv_path)
+        assert os.listdir(dirs["working"]) == []
 
     def test_ignores_temp_lock_files(self, dirs):
         lock_path = os.path.join(dirs["watch"], "~$sample.xlsx")

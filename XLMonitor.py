@@ -5,7 +5,7 @@ import shutil
 import csv
 from openpyxl import load_workbook
 
-from logger import logger
+from logger import BASE_DIR, logger
 
 WATCH_DIR = os.getenv('WATCH_DIR', '')
 OUTPUT_1F_DIR = os.getenv('OUTPUT_1F_DIR', '')
@@ -14,6 +14,8 @@ ARCHIVE_DIR = os.getenv('ARCHIVE_DIR', '')
 POLL_INTERVAL = int(os.getenv('POLL_INTERVAL', 5))
 MAX_ARCHIVE_FILE_AGE = int(os.getenv('MAX_ARCHIVE_FILE_AGE', 30))
 TRIM_INTERVAL = int(os.getenv('TRIM_INTERVAL', 86400))
+TEST_MODE = bool(os.getenv('TEST_MODE', False))
+WORKING_DIR = os.path.join(BASE_DIR, 'working')
 
 
 def replace_commas_in_parentheses(text):
@@ -50,6 +52,18 @@ def format_csv_filename(base_name):
     )
 
 
+def clear_working_directory():
+    """Create the local workspace and remove files from prior processing."""
+    os.makedirs(WORKING_DIR, exist_ok=True)
+
+    for name in os.listdir(WORKING_DIR):
+        path = os.path.join(WORKING_DIR, name)
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+
+
 def trim_archive():
     if not ARCHIVE_DIR:
         return
@@ -69,19 +83,13 @@ def trim_archive():
 
 
 def convert_excel_to_csv():
-    # WATCH_DIR and ARCHIVE_DIR are local folders, so it's safe to create
-    # them automatically if they're missing.
-    for folder in [WATCH_DIR, ARCHIVE_DIR]:
+    for folder in [WATCH_DIR, ARCHIVE_DIR, WORKING_DIR]:
         if folder and not os.path.exists(folder):
             try:
                 os.makedirs(folder)
             except Exception as e:
                 logger.error(f"Error creating folder {folder}: {e}")
 
-    # OUTPUT_1F_DIR and OUTPUT_CSV_DIR are network locations. Don't try to
-    # create them - if they're unavailable (e.g. share is down/disconnected),
-    # log an error and skip this cycle instead of silently creating local
-    # folders in the wrong place.
     for folder in [OUTPUT_1F_DIR, OUTPUT_CSV_DIR]:
         if not folder or not os.path.isdir(folder):
             logger.error(f"Output directory not available: {folder!r}")
@@ -96,14 +104,25 @@ def convert_excel_to_csv():
                 base_name = os.path.splitext(filename)[0]
                 csv_base_name = format_csv_filename(base_name)
                 csv_path = os.path.join(OUTPUT_CSV_DIR, f"{csv_base_name}.csv")
+                working_csv_path = os.path.join(
+                    WORKING_DIR,
+                    f"{csv_base_name}.csv",
+                )
                 wb = load_workbook(excel_path, data_only=True)
                 ws = wb.active
 
-                with open(csv_path, "w", newline="", encoding="utf-8") as f:
+                clear_working_directory()
+                with open(working_csv_path, "w", newline="", encoding="utf-8") as f:
                     writer = csv.writer(f)
                     for row in ws.iter_rows(values_only=True):
                         writer.writerow(clean_row(row))
-                shutil.copy(excel_path, os.path.join(OUTPUT_1F_DIR, filename))
+                if TEST_MODE:
+                    logger.info(f"Test mode: CSV file created at {working_csv_path}")
+                else:
+                    shutil.copy2(working_csv_path, csv_path)
+                    os.remove(working_csv_path)
+                    shutil.copy(excel_path, os.path.join(OUTPUT_1F_DIR, filename))
+
                 shutil.move(excel_path, os.path.join(ARCHIVE_DIR, filename))
 
             except Exception as e:
