@@ -29,11 +29,10 @@ def replace_commas_in_parentheses(text):
     if not isinstance(text, str):
         return text
 
-    return re.sub(
-        r"\(([^)]*)\)",
-        lambda m: f"({m.group(1).replace(',', ' ')})",
-        text,
-    )
+    def _replace(m: "re.Match[str]") -> str:
+        return f"({m.group(1).replace(',', ' ')})"
+
+    return re.sub(r"\(([^)]*)\)", _replace, text)
 
 
 def clean_row(row):
@@ -112,6 +111,8 @@ def convert_excel_to_csv():
                 )
                 wb = load_workbook(excel_path, data_only=True)
                 ws = wb.active
+                if ws is None:
+                    raise ValueError(f"Workbook has no active sheet: {excel_path!r}")
 
                 clear_working_directory()
                 with open(working_csv_path, "w", newline="", encoding="utf-8") as f:
