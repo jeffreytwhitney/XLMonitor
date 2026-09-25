@@ -1,1 +1,13 @@
 /.coverage
+/output/.env
+/.idea/.gitignore
+/tests/files/archive/M961373A001_RevE-Op10-DOT 6.2 - 09_22_2026 11_24_00 PM.XLSX
+/tests/files/out_1f/M961373A001_RevE-Op10-DOT 6.2 - 09_22_2026 11_24_00 PM.XLSX
+/.idea/misc.xml
+/.idea/modules.xml
+/.idea/inspectionProfiles/profiles_settings.xml
+/.idea/inspectionProfiles/Project_Default.xml
+/.idea/vcs.xml
+/output/xlMonitor.exe
+/.idea/XLMonitor.iml
+/tests/files/out_csv/M961373A001_RevE-Op10-[DOT 6.2] - 09_22_2026 11_24_00 PM.csv
