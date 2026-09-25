@@ -3,6 +3,7 @@ import re
 import time
 import shutil
 import csv
+import atexit
 from openpyxl import load_workbook
 
 from env_config import config
@@ -80,7 +81,7 @@ def trim_archive():
                     os.remove(file_path)
                     logger.info(f"Deleted old archive file: {filename}")
                 except Exception as e:
-                    logger.error(f"Error deleting {filename}: {e}")
+                    logger.exception(f"Error deleting {filename}: {e}")
 
 
 def convert_excel_to_csv():
@@ -127,7 +128,7 @@ def convert_excel_to_csv():
                 shutil.move(excel_path, os.path.join(ARCHIVE_DIR, filename))
 
             except Exception as e:
-                logger.error(f"Error processing {filename}: {e}")
+                logger.exception(f"Error processing {filename}: {e}")
 
 
 def should_exit():
@@ -142,14 +143,37 @@ def run_monitor_loop():
             logger.info("KILL_ME_NOW is set. Exiting.")
             break
 
-        convert_excel_to_csv()
+        try:
+            convert_excel_to_csv()
+        except Exception as e:
+            logger.exception(f"Unexpected error during the monitor cycle: {e}")
 
         if time.time() - last_trim_time >= TRIM_INTERVAL:
-            trim_archive()
+            try:
+                trim_archive()
+            except Exception as e:
+                logger.exception(f"Unexpected error while trimming the archive: {e}")
             last_trim_time = time.time()
 
         time.sleep(POLL_INTERVAL)
 
 
+def main():
+    exit_reason = "normal shutdown"
+
+    def log_exit():
+        logger.info("XLMonitor exiting (%s).", exit_reason)
+
+    atexit.register(log_exit)
+    logger.info("XLMonitor started.")
+
+    try:
+        run_monitor_loop()
+    except BaseException:
+        exit_reason = "unhandled exception"
+        logger.exception("XLMonitor terminated because of an unhandled exception.")
+        raise
+
+
 if __name__ == "__main__":
-    run_monitor_loop()
+    main()
