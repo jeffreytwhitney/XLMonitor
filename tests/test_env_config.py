@@ -1,4 +1,5 @@
 import os
+import sys
 
 import pytest
 
@@ -71,3 +72,11 @@ class TestSingletonSettings:
         # conftest.py loads .envtest with override=True before this module
         # is imported, so TEST_MODE should reflect that fixture file.
         assert config.TEST_MODE is False
+
+    def test_base_dir_uses_executable_location_when_frozen(self, monkeypatch):
+        monkeypatch.setattr(sys, "frozen", True, raising=False)
+        monkeypatch.setattr(sys, "executable", os.path.join("custom", "monitor.exe"))
+
+        from env_config import _get_base_dir
+
+        assert _get_base_dir() == os.path.dirname(os.path.join("custom", "monitor.exe"))

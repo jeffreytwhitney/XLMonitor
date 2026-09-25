@@ -114,6 +114,16 @@ class TestCleanRow:
         assert isinstance(result, list)
         assert row == ("a", "b (c,d)")  # original untouched
 
+    def test_clears_nested_directories_and_files(self, dirs):
+        nested_dir = os.path.join(dirs["working"], "nested")
+        os.makedirs(nested_dir)
+        with open(os.path.join(dirs["working"], "stale.csv"), "w", encoding="utf-8") as f:
+            f.write("stale")
+
+        xl.clear_working_directory()
+
+        assert os.listdir(dirs["working"]) == []
+
 
 class TestFormatCsvFilename:
     def test_brackets_dot_machine_name_and_trims_trailing_space(self):
@@ -322,6 +332,57 @@ class TestConvertExcelToCsv:
         assert os.listdir(dirs["output_csv"]) == []
         assert os.listdir(dirs["output_1f"]) == []
 
+    def test_keeps_processing_when_archive_directory_creation_fails(
+        self, tmp_path, monkeypatch
+    ):
+        watch_dir = tmp_path / "watch"
+        output_1f_dir = tmp_path / "output_1f"
+        output_csv_dir = tmp_path / "output_csv"
+        watch_dir.mkdir()
+        output_1f_dir.mkdir()
+        output_csv_dir.mkdir()
+        missing_archive = tmp_path / "archive"
+
+        monkeypatch.setattr(xl, "WATCH_DIR", str(watch_dir))
+        monkeypatch.setattr(xl, "ARCHIVE_DIR", str(missing_archive))
+        monkeypatch.setattr(xl, "WORKING_DIR", str(tmp_path / "working"))
+        monkeypatch.setattr(xl, "OUTPUT_1F_DIR", str(output_1f_dir))
+        monkeypatch.setattr(xl, "OUTPUT_CSV_DIR", str(output_csv_dir))
+
+        real_makedirs = os.makedirs
+
+        def fail_archive_creation(path, *args, **kwargs):
+            if path == str(missing_archive):
+                raise OSError("archive unavailable")
+            real_makedirs(path, *args, **kwargs)
+
+        monkeypatch.setattr(xl.os, "makedirs", fail_archive_creation)
+        xl.convert_excel_to_csv()
+
+        assert not missing_archive.exists()
+
+    def test_handles_workbook_without_active_sheet(self, dirs, monkeypatch):
+        xlsx_path = os.path.join(dirs["watch"], "empty.xlsx")
+        make_workbook(xlsx_path, [["value"]])
+
+        class WorkbookWithoutActiveSheet:
+            active = None
+
+        monkeypatch.setattr(xl, "load_workbook", lambda *args, **kwargs: WorkbookWithoutActiveSheet())
+        xl.convert_excel_to_csv()
+
+        assert os.path.exists(xlsx_path)
+
+    def test_test_mode_leaves_csv_in_working_directory(self, dirs, monkeypatch):
+        monkeypatch.setattr(xl, "TEST_MODE", True)
+        xlsx_path = os.path.join(dirs["watch"], "sample.xlsx")
+        make_workbook(xlsx_path, [["a", "b"]])
+
+        xl.convert_excel_to_csv()
+
+        assert os.path.exists(os.path.join(dirs["working"], "sample.csv"))
+        assert not os.path.exists(os.path.join(dirs["output_csv"], "sample.csv"))
+
 
 class TestTrimArchive:
     def test_deletes_files_older_than_max_age(self, tmp_path, monkeypatch):
@@ -358,6 +419,24 @@ class TestTrimArchive:
         # Should simply return without raising, even though the (empty)
         # directory does not exist.
         xl.trim_archive()
+
+    def test_logs_and_continues_when_old_file_cannot_be_deleted(
+        self, tmp_path, monkeypatch
+    ):
+        archive_dir = tmp_path / "archive"
+        archive_dir.mkdir()
+        old_file = archive_dir / "old.xlsx"
+        old_file.write_text("old")
+        old_time = time.time() - (2 * 86400)
+        os.utime(old_file, (old_time, old_time))
+
+        monkeypatch.setattr(xl, "ARCHIVE_DIR", str(archive_dir))
+        monkeypatch.setattr(xl, "MAX_ARCHIVE_FILE_AGE", 1)
+        monkeypatch.setattr(xl.os, "remove", lambda path: (_ for _ in ()).throw(OSError("locked")))
+
+        xl.trim_archive()
+
+        assert old_file.exists()
 
 
 class TestIntegration:
@@ -442,7 +521,6 @@ class TestRunMonitorLoop:
         )
 
         xl.run_monitor_loop()
-
         assert convert_calls == []
 
     def test_processes_files_until_should_exit_is_true(self, monkeypatch):
@@ -473,3 +551,39 @@ class TestRunMonitorLoop:
         xl.run_monitor_loop()
 
         assert trim_calls == [1]
+
+    def test_logs_and_continues_after_cycle_and_trim_errors(self, monkeypatch):
+        exit_flags = [False, True]
+        monkeypatch.setattr(xl, "should_exit", lambda: exit_flags.pop(0))
+        monkeypatch.setattr(
+            xl, "convert_excel_to_csv", lambda: (_ for _ in ()).throw(RuntimeError("cycle"))
+        )
+        monkeypatch.setattr(
+            xl, "trim_archive", lambda: (_ for _ in ()).throw(RuntimeError("trim"))
+        )
+        monkeypatch.setattr(xl, "TRIM_INTERVAL", 0)
+        monkeypatch.setattr(xl.time, "sleep", lambda seconds: None)
+
+        xl.run_monitor_loop()
+
+
+class TestMain:
+    def test_registers_exit_handler_and_runs_monitor(self, monkeypatch):
+        exit_handlers = []
+        monkeypatch.setattr(
+            xl.atexit, "register", lambda handler: exit_handlers.append(handler)
+        )
+        monkeypatch.setattr(xl, "run_monitor_loop", lambda: None)
+
+        xl.main()
+
+        assert len(exit_handlers) == 1
+        exit_handlers[0]()
+
+    def test_reraises_unhandled_monitor_exception(self, monkeypatch):
+        monkeypatch.setattr(
+            xl, "run_monitor_loop", lambda: (_ for _ in ()).throw(RuntimeError("fatal"))
+        )
+
+        with pytest.raises(RuntimeError, match="fatal"):
+            xl.main()
