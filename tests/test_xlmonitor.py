@@ -126,12 +126,12 @@ class TestCleanRow:
 
 
 class TestFormatCsvFilename:
-    def test_brackets_dot_machine_name_and_trims_trailing_space(self):
+    def test_brackets_only_whole_number_in_dot_machine_name(self):
         base_name = "M961373A001_RevE-Op10-DOT 6.2 - 09_22_2026 11_24_00 PM"
 
         result = xl.format_csv_filename(base_name)
 
-        assert result == "M961373A001_RevE-Op10-[DOT 6.2] - 09_22_2026 11_24_00 PM"
+        assert result == "M961373A001_RevE-Op10-[DOT 6].2 - 09_22_2026 11_24_00 PM"
 
     def test_leaves_names_without_a_dot_machine_name_unchanged(self):
         base_name = "M961373A001_RevE-Op10-Other Machine - 09_22_2026"

@@ -45,10 +45,10 @@ def clean_row(row):
 
 
 def format_csv_filename(base_name):
-    """Bracket the dash-delimited DOT machine name in a CSV base filename."""
+    """Bracket the DOT machine's whole number in a CSV base filename."""
     return re.sub(
-        r"-(DOT[^-]*?\d)\s*-",
-        r"-[\1] -",
+        r"-(DOT[^-]*?\d)(\.\d+)?\s*-",
+        r"-[\1]\2 -",
         base_name,
     )
 
