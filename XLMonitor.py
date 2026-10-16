@@ -4,6 +4,9 @@ import time
 import shutil
 import csv
 import atexit
+import logging
+from collections import deque
+
 from openpyxl import load_workbook
 
 from env_config import config
@@ -18,6 +21,9 @@ MAX_ARCHIVE_FILE_AGE = config.MAX_ARCHIVE_FILE_AGE
 TRIM_INTERVAL = config.TRIM_INTERVAL
 TEST_MODE = config.TEST_MODE
 WORKING_DIR = os.path.join(config.BASE_DIR, 'working')
+LOG_FILE = os.path.join(config.BASE_DIR, config.LOGGER_FILE)
+MAX_LOG_ROWS = 50000
+LOG_TRIM_INTERVAL = 86400  # once a day
 
 
 def replace_commas_in_parentheses(text):
@@ -72,6 +78,36 @@ def trim_archive():
                     logger.info(f"Deleted old archive file: {filename}")
                 except Exception as e:
                     logger.exception(f"Error deleting {filename}: {e}")
+
+
+def trim_logfile():
+    """Keep only the last MAX_LOG_ROWS lines of the log file."""
+    if not os.path.isfile(LOG_FILE):
+        return
+
+    file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
+    for h in file_handlers:
+        h.acquire()
+    try:
+        # Windows can't replace a file that the logging handler holds open.
+        for h in file_handlers:
+            h.flush()
+            if h.stream:
+                h.stream.close()
+                h.stream = None
+
+        with open(LOG_FILE, encoding="utf-8", errors="replace") as f:
+            rows = deque(f, maxlen=MAX_LOG_ROWS)
+        tmp = LOG_FILE + ".trim"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.writelines(rows)
+        os.replace(tmp, LOG_FILE)
+    except OSError as exc:
+        logger.error(f"Could not trim log file: {exc}")
+    finally:
+        # FileHandler reopens its stream on the next emit.
+        for h in file_handlers:
+            h.release()
 
 
 def convert_excel_to_csv():
@@ -129,6 +165,7 @@ def should_exit():
 
 def run_monitor_loop():
     last_trim_time = 0
+    last_log_trim_time = 0
     while True:
         if should_exit():
             logger.info("KILL_ME_NOW is set. Exiting.")
@@ -145,6 +182,13 @@ def run_monitor_loop():
             except Exception as e:
                 logger.exception(f"Unexpected error while trimming the archive: {e}")
             last_trim_time = time.time()
+
+        if time.time() - last_log_trim_time >= LOG_TRIM_INTERVAL:
+            try:
+                trim_logfile()
+            except Exception as e:
+                logger.exception(f"Unexpected error while trimming the log file: {e}")
+            last_log_trim_time = time.time()
 
         time.sleep(POLL_INTERVAL)
 
